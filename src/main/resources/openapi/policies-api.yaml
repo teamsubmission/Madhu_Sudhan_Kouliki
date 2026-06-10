@@ -1,0 +1,460 @@
+openapi: 3.0.3
+info:
+  title: Policy Overview BFF API
+  description: >-
+    Backend-for-Frontend service for the Policy Overview Dashboard. Provides
+    listing, retrieval, flagging and summary aggregation of insurance policies
+    for APAC operations.
+  version: 1.0.0
+servers:
+  - url: /api/v1
+    description: Base path for version 1 of the Policy Overview BFF API
+tags:
+  - name: Policies
+    description: Operations for listing, retrieving, flagging and summarising policies
+paths:
+  /policies:
+    get:
+      tags:
+        - Policies
+      summary: List policies
+      description: >-
+        List policies with pagination, sorting, filtering and free-text search.
+      operationId: getPolicies
+      parameters:
+        - name: page
+          in: query
+          description: Zero-based page index.
+          required: false
+          schema:
+            type: integer
+            format: int32
+            minimum: 0
+            default: 0
+          example: 0
+        - name: size
+          in: query
+          description: Number of records per page.
+          required: false
+          schema:
+            type: integer
+            format: int32
+            minimum: 1
+            default: 20
+          example: 20
+        - name: sort
+          in: query
+          description: >-
+            Sort criteria in the format `property,(asc|desc)`.
+          required: false
+          schema:
+            type: string
+          example: premiumAmount,desc
+        - name: status
+          in: query
+          description: Filter by policy status.
+          required: false
+          schema:
+            $ref: '#/components/schemas/Status'
+          example: Active
+        - name: lineOfBusiness
+          in: query
+          description: Filter by line of business.
+          required: false
+          schema:
+            $ref: '#/components/schemas/LineOfBusiness'
+          example: Property
+        - name: region
+          in: query
+          description: Filter by region.
+          required: false
+          schema:
+            $ref: '#/components/schemas/Region'
+          example: Singapore
+        - name: effectiveDateFrom
+          in: query
+          description: Filter policies with an effective date on or after this date.
+          required: false
+          schema:
+            type: string
+            format: date
+          example: '2025-01-01'
+        - name: effectiveDateTo
+          in: query
+          description: Filter policies with an effective date on or before this date.
+          required: false
+          schema:
+            type: string
+            format: date
+          example: '2025-12-31'
+        - name: search
+          in: query
+          description: Free-text search across policy attributes.
+          required: false
+          schema:
+            type: string
+          example: Acme
+      responses:
+        '200':
+          description: Paginated list of policies.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PagedPolicies'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+  /policies/{id}:
+    get:
+      tags:
+        - Policies
+      summary: Get policy by id
+      description: Retrieve the details of a single policy by its identifier.
+      operationId: getPolicyById
+      parameters:
+        - name: id
+          in: path
+          description: Unique identifier of the policy.
+          required: true
+          schema:
+            type: string
+            format: uuid
+          example: 3fa85f64-5717-4562-b3fc-2c963f66afa6
+      responses:
+        '200':
+          description: Single policy details.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Policy'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+  /policies/flag:
+    patch:
+      tags:
+        - Policies
+      summary: Flag policies for review
+      description: Flag one or more policies for review by their identifiers.
+      operationId: flagPolicies
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/FlagPoliciesRequest'
+            example:
+              policyIds:
+                - 3fa85f64-5717-4562-b3fc-2c963f66afa6
+                - 9c858901-8a57-4791-81fe-4c455b099bc9
+      responses:
+        '200':
+          description: Result of the flagging operation.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FlagPoliciesResponse'
+              example:
+                flaggedCount: 2
+                message: 2 policies flagged for review.
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+  /policies/summary:
+    get:
+      tags:
+        - Policies
+      summary: Get policy summary
+      description: >-
+        Retrieve aggregate statistics across policies, including counts by
+        status, total premium by line of business and the number of policies
+        expiring soon.
+      operationId: getPolicySummary
+      responses:
+        '200':
+          description: Aggregated policy summary.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PolicySummary'
+              example:
+                statusCounts:
+                  Active: 120
+                  Expired: 30
+                  Pending: 15
+                  Cancelled: 5
+                premiumByLineOfBusiness:
+                  Property: 1250000.00
+                  Casualty: 890000.50
+                  A&H: 430000.00
+                  Marine: 610000.75
+                expiringSoonCount: 8
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+components:
+  schemas:
+    Status:
+      type: string
+      description: Lifecycle status of a policy.
+      enum:
+        - Active
+        - Expired
+        - Pending
+        - Cancelled
+      example: Active
+    LineOfBusiness:
+      type: string
+      description: Line of business the policy belongs to.
+      enum:
+        - Property
+        - Casualty
+        - A&H
+        - Marine
+      example: Property
+    Region:
+      type: string
+      description: APAC region the policy belongs to.
+      enum:
+        - Singapore
+        - Hong Kong
+        - Australia
+        - Japan
+        - Thailand
+        - Indonesia
+        - Malaysia
+        - Philippines
+      example: Singapore
+    Policy:
+      type: object
+      description: A single insurance policy.
+      required:
+        - id
+        - policyNumber
+        - policyholderName
+        - lineOfBusiness
+        - status
+        - premiumAmount
+        - currency
+        - effectiveDate
+        - expiryDate
+        - region
+        - underwriter
+        - flaggedForReview
+        - createdAt
+        - updatedAt
+      properties:
+        id:
+          type: string
+          format: uuid
+          example: 3fa85f64-5717-4562-b3fc-2c963f66afa6
+        policyNumber:
+          type: string
+          example: POL-1001
+        policyholderName:
+          type: string
+          example: Acme Pte Ltd
+        lineOfBusiness:
+          $ref: '#/components/schemas/LineOfBusiness'
+        status:
+          $ref: '#/components/schemas/Status'
+        premiumAmount:
+          type: number
+          format: double
+          minimum: 0
+          example: 12500.00
+        currency:
+          type: string
+          example: SGD
+        effectiveDate:
+          type: string
+          format: date
+          example: '2025-01-01'
+        expiryDate:
+          type: string
+          format: date
+          example: '2025-12-31'
+        region:
+          $ref: '#/components/schemas/Region'
+        underwriter:
+          type: string
+          example: Jane Lim
+        flaggedForReview:
+          type: boolean
+          example: false
+        createdAt:
+          type: string
+          format: date-time
+          example: '2025-01-01T08:30:00Z'
+        updatedAt:
+          type: string
+          format: date-time
+          example: '2025-06-01T10:15:00Z'
+    PagedPolicies:
+      type: object
+      description: Paginated list of policies.
+      required:
+        - content
+        - page
+        - size
+        - totalElements
+        - totalPages
+      properties:
+        content:
+          type: array
+          items:
+            $ref: '#/components/schemas/Policy'
+        page:
+          type: integer
+          format: int32
+          description: Zero-based index of the current page.
+          example: 0
+        size:
+          type: integer
+          format: int32
+          description: Number of records per page.
+          example: 20
+        totalElements:
+          type: integer
+          format: int64
+          description: Total number of policies across all pages.
+          example: 170
+        totalPages:
+          type: integer
+          format: int32
+          description: Total number of pages.
+          example: 9
+    FlagPoliciesRequest:
+      type: object
+      description: Request to flag one or more policies for review.
+      required:
+        - policyIds
+      properties:
+        policyIds:
+          type: array
+          description: Identifiers of the policies to flag.
+          minItems: 1
+          items:
+            type: string
+            format: uuid
+          example:
+            - 3fa85f64-5717-4562-b3fc-2c963f66afa6
+    FlagPoliciesResponse:
+      type: object
+      description: Result of a flagging operation.
+      required:
+        - flaggedCount
+        - message
+      properties:
+        flaggedCount:
+          type: integer
+          format: int32
+          minimum: 0
+          example: 2
+        message:
+          type: string
+          example: 2 policies flagged for review.
+    PolicySummary:
+      type: object
+      description: Aggregated statistics across policies.
+      required:
+        - statusCounts
+        - premiumByLineOfBusiness
+        - expiringSoonCount
+      properties:
+        statusCounts:
+          type: object
+          description: Count of policies per status.
+          additionalProperties:
+            type: integer
+            format: int64
+          example:
+            Active: 120
+            Expired: 30
+            Pending: 15
+            Cancelled: 5
+        premiumByLineOfBusiness:
+          type: object
+          description: Total premium amount per line of business.
+          additionalProperties:
+            type: number
+            format: double
+          example:
+            Property: 1250000.00
+            Casualty: 890000.50
+            A&H: 430000.00
+            Marine: 610000.75
+        expiringSoonCount:
+          type: integer
+          format: int32
+          minimum: 0
+          description: Number of policies expiring soon.
+          example: 8
+    ErrorResponse:
+      type: object
+      description: Standard error response.
+      required:
+        - timestamp
+        - status
+        - error
+        - message
+        - path
+      properties:
+        timestamp:
+          type: string
+          format: date-time
+          example: '2025-06-09T10:15:30Z'
+        status:
+          type: integer
+          format: int32
+          example: 400
+        error:
+          type: string
+          example: Bad Request
+        message:
+          type: string
+          example: Invalid value for parameter 'size'.
+        path:
+          type: string
+          example: /api/v1/policies
+  responses:
+    BadRequest:
+      description: The request was invalid or malformed.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          example:
+            timestamp: '2025-06-09T10:15:30Z'
+            status: 400
+            error: Bad Request
+            message: Invalid value for parameter 'size'.
+            path: /api/v1/policies
+    NotFound:
+      description: The requested resource was not found.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          example:
+            timestamp: '2025-06-09T10:15:30Z'
+            status: 404
+            error: Not Found
+            message: Policy not found.
+            path: /api/v1/policies/3fa85f64-5717-4562-b3fc-2c963f66afa6
+    ServiceUnavailable:
+      description: A downstream dependency is unavailable.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          example:
+            timestamp: '2025-06-09T10:15:30Z'
+            status: 503
+            error: Service Unavailable
+            message: The policy data source is currently unreachable.
+            path: /api/v1/policies
